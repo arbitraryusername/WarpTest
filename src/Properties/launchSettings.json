@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Program": {
+      "commandName": "Project",
+      "commandLineArgs": "\".\\images\\grid.jpg\" -x -b:2"
+    }
+  }
+}
