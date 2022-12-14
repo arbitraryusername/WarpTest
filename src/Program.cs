@@ -28,11 +28,12 @@ using (var img = CvInvoke.Imread(options.ImagePath))
 CvInvoke.Imshow("original", imgsrc);
 
 //rows=height, cols=width eg (y,x), first dim=x, second dim=y for uv map
-using var mapX = new Matrix<float>(imgsrc.Height,imgsrc.Width);
+using var mapX = new Matrix<float>(imgsrc.Height, imgsrc.Width);
 using var mapY = new Matrix<float>(imgsrc.Height, imgsrc.Width);
 
-// Are we mapping along the x- or y-axis? Set our mapping function.
-Func<PointF, int, int, float, PointF> map = options.MapXAxis ? MapCylinderX : MapCylinderY;
+// Are we mapping along the x-axis or y-axis? Set our mapping function.
+// Func<PointF, int, int, float, PointF> map = options.MapXAxis ? MapCylinderX : MapCylinderY; // TODO: add command line interface option to change usage of cylinder versus sphere functions
+Func<PointF, int, int, float, PointF> map = options.MapXAxis ? MapSphereX : MapSphereY;
 
 // Are we mapping a convex or concave surface?
 float zDir = options.Convex ? -1f : 1f;
@@ -43,10 +44,10 @@ for (int y = 0; y < imgsrc.Height; y++)
     for (int x = 0; x < imgsrc.Width; x++)
     {
         var pointOriginal = new PointF(x, y);
-        var pointCylinder=map(pointOriginal, imgsrc.Width, imgsrc.Height, zDir);
+        var pointMapped = map(pointOriginal, imgsrc.Width, imgsrc.Height, zDir);
 
-        mapX[y, x] = pointCylinder.X;
-        mapY[y, x] = pointCylinder.Y;
+        mapX[y, x] = pointMapped.X;
+        mapY[y, x] = pointMapped.Y;
     }
 }
 
@@ -67,19 +68,16 @@ static PointF MapCylinderY(PointF point, int w, int h, float zDir)
 
     // Free parameters that can be adjust for interesting effects.
     float f = w * zDir;
-    //float f = w/2;
-    //float f = 2*w;
     float r = w;
-    //float r = w/2;
-    //float r = 2 * w; //cylinder diameter is smaller than the width of the image
 
     float omega = w / 2;
     float z0 = f - (float)Math.Sqrt(f * f - omega * omega);
 
     float zc = (float)((2.0 * z0 + Math.Sqrt(4.0 * z0 * z0 - 4.0 * (pc.X * pc.X / (f * f) + 1.0) * (z0 * z0 - r * r))) / (2.0 * (pc.X * pc.X / (f * f) + 1.0)));
+
     // The calculation below skews the image.
-    // float zc = (2 * z0 + (float)Math.Sqrt(4 * z0 * z0 - 4 * (pc.X * pc.Y / (f * f) + 1) * (z0 * z0 - r * r))) / (2 * (pc.X * pc.X / (f * f) + 1));
     var final_point = new PointF(pc.X * zc / f, pc.Y * zc / f);
+
     final_point.X += w / 2;
     final_point.Y += h / 2;
 
@@ -95,19 +93,62 @@ static PointF MapCylinderX(PointF point, int w, int h, float zDir)
 
     // Free parameters that can be adjust for interesting effects.
     float f = h * zDir;
-    //float f = w/2;
-    //float f = 2*w;
     float r = h;
-    //float r = w/2;
-    //float r = 2 * w; //cylinder diameter is smaller than the width of the image
 
     float omega = h / 2;
     float z0 = f - (float)Math.Sqrt(f * f - omega * omega);
 
     float zc = (float)((2.0 * z0 + Math.Sqrt(4.0 * z0 * z0 - 4.0 * (pc.Y * pc.Y / (f * f) + 1.0) * (z0 * z0 - r * r))) / (2.0 * (pc.Y * pc.Y / (f * f) + 1.0)));
+
     // The calculation below skews the image.
-    // float zc = (2 * z0 + (float)Math.Sqrt(4 * z0 * z0 - 4 * (pc.X * pc.Y / (f * f) + 1) * (z0 * z0 - r * r))) / (2 * (pc.X * pc.X / (f * f) + 1));
     var final_point = new PointF(pc.X * zc / f, pc.Y * zc / f);
+
+    final_point.X += w / 2;
+    final_point.Y += h / 2;
+
+    return final_point;
+}
+
+static PointF MapSphereY(PointF point, int w, int h, float zDir)
+{
+    // Center the point at (0,0)
+    var pc = new PointF(point.X - w / 2, point.Y - h / 2);
+
+    // set the free parameters
+    float f = w * zDir; // NOTE: this is setting the distance from the camera to the image reflection plane to the width of the image
+    float r = w; // NOTE: this is setting the radius of the cylinder to the width of the image
+
+    float z0 = f - (float)Math.Sqrt(r * r - (w / 2) * (w / 2) - (h / 2) * (h / 2)); // NOTE: this is the location of the center of the sphere along the z-axis
+    float a = (float)(1.0 + pc.X * pc.X / (f * f) + pc.Y * pc.Y / (f * f)); // NOTE: this is the coefficient on the z^2 term in the quadratic equation solution for z as function of ximg and yimg
+
+    float zc = (float)((2.0 * z0 + Math.Sqrt(4.0 * z0 * z0 - 4.0 * a * (z0 * z0 - r * r))) / (2.0 * a));
+
+    // The calculation below skews the image.
+    var final_point = new PointF(pc.X * zc / f, pc.Y * zc / f);
+
+    final_point.X += w / 2;
+    final_point.Y += h / 2;
+
+    return final_point;
+}
+
+static PointF MapSphereX(PointF point, int w, int h, float zDir)
+{
+    // Center the point at (0,0)
+    var pc = new PointF(point.X - w / 2, point.Y - h / 2);
+
+    // set the free parameters
+    float f = h * zDir; // NOTE: this is setting the distance from the camera to the image reflection plane to the height of the image
+    float r = h; // NOTE: this is setting the radius of the cylinder to the height of the image
+
+    float z0 = f - (float)Math.Sqrt(r * r - (w / 2) * (w / 2) - (h / 2) * (h / 2)); // NOTE: this is the location of the center of the sphere along the z-axis
+    float a = (float)(1.0 + pc.X * pc.X / (f * f) + pc.Y * pc.Y / (f * f)); // NOTE: this is the coefficient on the z^2 term in the quadratic equation solution for z as function of ximg and yimg
+
+    float zc = (float)((2.0 * z0 + Math.Sqrt(4.0 * z0 * z0 - 4.0 * a * (z0 * z0 - r * r))) / (2.0 * a));
+
+    // The calculation below skews the image.
+    var final_point = new PointF(pc.X * zc / f, pc.Y * zc / f);
+
     final_point.X += w / 2;
     final_point.Y += h / 2;
 
